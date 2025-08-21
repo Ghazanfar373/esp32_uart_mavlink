@@ -5,6 +5,9 @@
 
 #include <mavlink.h> 
 #define  LED_BUILTIN  2
+#define  Fuel_L1_Detect_Pin 4
+
+#define  Fuel_L2_Detect_Pin 18
 // Hardware ports
 COMMS_MAVLINK mavlink(Serial);
 void send_param(void);
@@ -12,10 +15,10 @@ void send_param(void);
 unsigned long _1Hz_timer = 0;
 uint16_t _counter = 0;
 // --- Your new custom parameter variable ---
-float my_param = 0.0;
+float param_fuel_level_1 = 0.0;
+float param_fuel_level_2 = 0.0;
 
-// --- Your new custom boolean parameter variable ---
-bool fuel_line = false;
+
 
 void setup()
 {
@@ -24,6 +27,11 @@ void setup()
 
   // LEDs
   pinMode(LED_BUILTIN,OUTPUT);
+
+  // Fuel Line Detect
+  pinMode(Fuel_L1_Detect_Pin,INPUT_PULLUP);
+
+  pinMode(Fuel_L2_Detect_Pin,INPUT_PULLUP);
 
   // Set up the mavlink connection
   mavlink.init();
@@ -35,25 +43,35 @@ void loop()
   // Handle any data we're being sent
   mavlink.update();
 
-  // Send a heartbeat at 1 Hz
-  if (millis() - _1Hz_timer > 1UL * 1000) {
+  // Send a heartbeat at 2 Hz
+  if (millis() - _1Hz_timer > 500) {
     // Update timer
     _1Hz_timer = millis();
-
-    // Update LED
-    digitalWrite(LED_BUILTIN,!digitalRead(LED_BUILTIN));
-
     // Send some data and a heartbeat
-    char buf[50];
-    sprintf(buf, "Counter is at %3d", _counter++);
-     if (_counter % 2 == 0) { // 50 * 100ms = 5 seconds
-        fuel_line = !fuel_line;
+     char buf[50];
+    if(digitalRead(Fuel_L1_Detect_Pin) == 0){
+      sprintf(buf, "Fuel Level OK ");
+      param_fuel_level_1 = 0;
+    }else{  
+      sprintf(buf, "Fuel Level Low (Aprox 1 liter) | Timestamp: %3d", _counter++);
+      param_fuel_level_1=1;
     }
+     if(digitalRead(Fuel_L2_Detect_Pin) == 0){
+       //sprintf(buf, "Fuel Level Below | Timestamp: %3d", _counter++);
+       param_fuel_level_2 = 0;
+       
+    }else{ 
+            param_fuel_level_2=1;
+            sprintf(buf, "Fuel Level Critcal Low [Below 1 liter] ");
+    }
+    //  if (_counter % 2 == 0) { // 50 * 100ms = 5 seconds
+    //     fuel_line = !fuel_line;
+    // }
     mavlink.send_heartbeat();
     mavlink.send_string(buf,sizeof(buf));
 
-    my_param = (float)random(0, 100) / 10.0; // Example: sending a random value
-    send_param();
+    // my_param = (float)random(0, 100) / 10.0; // Example: sending a random value
+     send_param();
   }
 }
 // --- New function to send your custom parameter ---
@@ -63,16 +81,17 @@ void send_param(void) {
 
 
  mavlink_msg_named_value_float_pack(mavlink.computer.system_id, mavlink.computer.component_id, &msg,
-     millis(), "Fuel", my_param);
+     millis(), "Fuel_Lvl_Low", param_fuel_level_1);
 
 
-
+ // Update LED
+    digitalWrite(LED_BUILTIN,!digitalRead(LED_BUILTIN));
 
   mavlink.broadcast(msg);
   delay(100);
 
-  mavlink_msg_named_value_int_pack(mavlink.computer.system_id, mavlink.computer.component_id, &msg,
-     millis(), "Fuel_line", (int32_t)fuel_line);
+  mavlink_msg_named_value_float_pack(mavlink.computer.system_id, mavlink.computer.component_id, &msg,
+     millis(), "Fuel_Lvl_Crtcl", param_fuel_level_2);
 
   mavlink.broadcast(msg);
 
